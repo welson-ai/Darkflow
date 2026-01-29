@@ -8,7 +8,7 @@ Privacy-First Trading on Solana DEXs
 
 ## Overview
 - Problem: On-chain trading is public; wallet identities and trade details can be traced across DEXs.
-- Solution: A privacy proxy that creates an ephemeral PDA (“Temp Wallet”) to interface with Jupiter on behalf of the user. Encrypted order parameters are processed via Arcium MPC, and swaps execute from the Temp Wallet, not the user’s wallet.
+- Solution: Built on Arcium MPC + Solana Anchor, DarkFlow creates an ephemeral PDA (“Temp Wallet”) to interface with Jupiter on behalf of the user. Encrypted order parameters are processed via Arcium MPC, and swaps execute from the Temp Wallet, not the user’s wallet.
 - Value: The public ledger shows the Temp Wallet as the trader; funds are returned to the user post-execution, improving privacy while retaining composability with the Solana ecosystem.
 
 ## How It Works
@@ -88,6 +88,18 @@ Privacy-First Trading on Solana DEXs
   - PDA helpers: [anchor.ts](file:///Users/h/dex/web/src/anchor.ts)
   - Keeper script: [keeper.ts](file:///Users/h/dex/scripts/keeper.ts)
 
+## Arcium Integration
+- Purpose: Off-chain MPC computes matches for encrypted swap parameters; only the Temp Wallet executes on-chain.
+- Features used:
+  - Program macros: arcium_anchor prelude with queue_computation, init_computation_definition_accounts, callback_accounts.
+  - Computation definition: “match_order” comp def initialized once; referenced via COMP_DEF_OFFSET_MATCH_ORDER.
+  - Encrypted arguments: amount_in, amount_out_min, token_in, token_out, nonce passed as EncryptedU64.
+  - Queueing: fund_and_place_order enqueues computation with MatchOrderCallback.
+  - Callback: match_order_callback receives plaintext outputs and marks SettlementRequest active.
+  - Accounts: MXE/mempool/executing_pool/computation/comp_def managed via derive_*_pda helpers.
+- Data flow:
+  - User input → encrypted args → queue_computation → MPC → callback → SettlementRequest → keeper builds Jupiter route → execute_swap signed by Temp Wallet PDA.
+
 ## Project Structure
 ```
 .
@@ -139,6 +151,29 @@ Privacy-First Trading on Solana DEXs
   - [styles.css](file:///Users/h/dex/web/src/styles.css): card-based layout and responsive styles.
   - [dex.json](file:///Users/h/dex/web/src/idl/dex.json): program IDL consumed by the frontend.
   - [jup-ag-api.d.ts](file:///Users/h/dex/web/src/types/jup-ag-api.d.ts): minimal type shim for dynamic Jupiter API imports.
+
+### File-by-File Notes
+- [programs/dex/src/lib.rs](file:///Users/h/dex/programs/dex/src/lib.rs)
+  - create_private_swap: creates Temp Wallet and stores encrypted fields.
+  - fund_and_place_order: verifies deposit and queues Arcium computation.
+  - match_order_callback: sets SettlementRequest after MPC success.
+  - execute_swap: Jupiter CPI signed by Temp Wallet PDA via invoke_signed.
+  - return_tokens_to_user: transfers token_out back and closes ATA.
+  - register_token and test helpers (init_settlement_test, simulate_match_order).
+- [scripts/keeper.ts](file:///Users/h/dex/scripts/keeper.ts)
+  - Listens for OrderSettledEvent, derives PDAs, and invokes execute_swap (route building to be completed).
+- [tests/dex.ts](file:///Users/h/dex/tests/dex.ts)
+  - Validates initialization and create_private_swap; extend to full custody flow.
+- [web/src/App.tsx](file:///Users/h/dex/web/src/App.tsx)
+  - Swap UI (input → deposit → processing → complete), quotes, balances, errors, and polling.
+- [web/src/anchor.ts](file:///Users/h/dex/web/src/anchor.ts)
+  - Provider/program setup, PDA helpers for settlement/token registry/temp wallet.
+- [web/src/styles.css](file:///Users/h/dex/web/src/styles.css)
+  - Card-based styling, mobile responsiveness, and UI polish.
+- [web/src/idl/dex.json](file:///Users/h/dex/web/src/idl/dex.json)
+  - Generated IDL consumed by the frontend for Anchor program methods.
+- [web/src/types/jup-ag-api.d.ts](file:///Users/h/dex/web/src/types/jup-ag-api.d.ts)
+  - Type shim enabling dynamic import of Jupiter API client.
 
 ## API Reference
 - Program Instructions (parameters abbreviated):
