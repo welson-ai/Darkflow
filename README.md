@@ -2,7 +2,7 @@
 
 Privacy-First Trading on Solana DEXs
 
-- Website: https://privateswap.com
+- Website: https://darkflow-three.vercel.app/
 - Docs: ./README.md
 - Community: see “Community” below
  
@@ -24,7 +24,7 @@ const endpoint = rpcEnv ||
 ```
 
 ### Arcium (Confidential Computing)
-Arcium (formerly "Aztec" or related confidential concepts) powers the MPC (Multi-Party Computation) layer. It ensures order parameters remain encrypted during matching.
+Arcium  powers the MPC (Multi-Party Computation) layer. It ensures order parameters remain encrypted during matching.
 ```rust
 // programs/dex/src/lib.rs
 use arcium_anchor::prelude::*;
