@@ -64,7 +64,7 @@ Privacy-First Trading on Solana DEXs
   - Keeper: yarn run keeper
   - Program tests: anchor test
     
-## Technology Stack & Integration Snippets
+## Technology Stack & Integration 
 
 ### Helius (RPC & Network)
 We use Helius for high-performance RPC connections on Solana Devnet and Mainnet.
