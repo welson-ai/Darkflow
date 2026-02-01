@@ -9,6 +9,61 @@ Privacy-First Trading on Solana DEXs
 ## Short Description
 - DarkFlow enables private token swaps on Solana powere DEXs (decentralized exchanges) by executing trades from an ephemeral PDA (Temp Wallet) instead of the user’s wallet. Orders are prepared off-chain and executed on-chain with privacy-preserving flow, returning funds to the user after completion.
 
+
+## Overview
+- Problem: On-chain trading is public; wallet identities and trade details can be traced across DEXs.
+- Solution: Built on Arcium MPC + Solana Anchor, DarkFlow creates an ephemeral PDA (“Temp Wallet”) to interface with Jupiter on behalf of the user. Encrypted order parameters are processed via Arcium MPC, and swaps execute from the Temp Wallet, not the user’s wallet.
+- Value: The public ledger shows the Temp Wallet as the trader; funds are returned to the user post-execution, improving privacy while retaining composability with the Solana ecosystem.
+
+## How It Works
+- Flow: User → Temp Wallet → Jupiter → User
+- Steps:
+  - User connects wallet and defines swap (USDC → SOL).
+  - Program creates a Temp Wallet PDA seeded by user key + nonce.
+  - User deposits token_in to the Temp Wallet’s ATA.
+  - Keeper queues computation to Arcium (match_order) and prepares Jupiter route.
+  - Program executes swap via CPI signed by the Temp Wallet PDA.
+  - Token_out returns to the user; Temp Wallet token accounts are closed to reclaim rent.
+- Technical architecture:
+  - Frontend (React + Vite): guides the user and shows deposit statuses.
+  - Solana Program (Anchor + Arcium): manages Temp Wallet lifecycle and MPC order matching.
+  - Keeper (TypeScript): listens to program events, detects deposits, and submits Jupiter routes.
+  - Jupiter: routes liquidity; receives CPI from the Temp Wallet authority.
+
+## Key Features
+- Privacy via ephemeral PDAs that act as on-chain trading proxies.
+- DEX compatibility with Jupiter aggregation.
+- Automated funding detection and execution via keeper.
+- Encrypted order inputs processed by Arcium MPC.
+- Simple user flow with deposit and automatic processing.
+
+## Getting Started
+- Users:
+  - Connect Phantom on devnet.
+  - Choose tokens and amount; click “Swap Privately”.
+  - Copy deposit address and send token_in; watch status progress to completion.
+- Developers:
+  - Install prerequisites (Node.js, Rust, Anchor).
+  - Clone repository and install dependencies.
+  - Run web dev server and keeper; run program tests with Anchor.
+
+## Installation & Setup
+- Prerequisites:
+  - Node.js 18+ and Yarn/NPM
+  - Rust toolchain + Solana CLI
+  - Anchor CLI (0.31.x)
+- Clone:
+  - git clone <repo> && cd dex
+- Dependencies:
+  - Root: npm install
+  - Web: yarn --cwd web install
+- Environment:
+  - Create .env from .env.example and update RPC URLs and wallet paths.
+- Local development:
+  - Frontend dev server: yarn --cwd web dev
+  - Keeper: yarn run keeper
+  - Program tests: anchor test
+    
 ## Technology Stack & Integration Snippets
 
 ### Helius (RPC & Network)
@@ -73,59 +128,7 @@ export function getProvider(wallet: any) {
 }
 ```
 
-## Overview
-- Problem: On-chain trading is public; wallet identities and trade details can be traced across DEXs.
-- Solution: Built on Arcium MPC + Solana Anchor, DarkFlow creates an ephemeral PDA (“Temp Wallet”) to interface with Jupiter on behalf of the user. Encrypted order parameters are processed via Arcium MPC, and swaps execute from the Temp Wallet, not the user’s wallet.
-- Value: The public ledger shows the Temp Wallet as the trader; funds are returned to the user post-execution, improving privacy while retaining composability with the Solana ecosystem.
 
-## How It Works
-- Flow: User → Temp Wallet → Jupiter → User
-- Steps:
-  - User connects wallet and defines swap (USDC → SOL).
-  - Program creates a Temp Wallet PDA seeded by user key + nonce.
-  - User deposits token_in to the Temp Wallet’s ATA.
-  - Keeper queues computation to Arcium (match_order) and prepares Jupiter route.
-  - Program executes swap via CPI signed by the Temp Wallet PDA.
-  - Token_out returns to the user; Temp Wallet token accounts are closed to reclaim rent.
-- Technical architecture:
-  - Frontend (React + Vite): guides the user and shows deposit statuses.
-  - Solana Program (Anchor + Arcium): manages Temp Wallet lifecycle and MPC order matching.
-  - Keeper (TypeScript): listens to program events, detects deposits, and submits Jupiter routes.
-  - Jupiter: routes liquidity; receives CPI from the Temp Wallet authority.
-
-## Key Features
-- Privacy via ephemeral PDAs that act as on-chain trading proxies.
-- DEX compatibility with Jupiter aggregation.
-- Automated funding detection and execution via keeper.
-- Encrypted order inputs processed by Arcium MPC.
-- Simple user flow with deposit and automatic processing.
-
-## Getting Started
-- Users:
-  - Connect Phantom on devnet.
-  - Choose tokens and amount; click “Swap Privately”.
-  - Copy deposit address and send token_in; watch status progress to completion.
-- Developers:
-  - Install prerequisites (Node.js, Rust, Anchor).
-  - Clone repository and install dependencies.
-  - Run web dev server and keeper; run program tests with Anchor.
-
-## Installation & Setup
-- Prerequisites:
-  - Node.js 18+ and Yarn/NPM
-  - Rust toolchain + Solana CLI
-  - Anchor CLI (0.31.x)
-- Clone:
-  - git clone <repo> && cd dex
-- Dependencies:
-  - Root: npm install
-  - Web: yarn --cwd web install
-- Environment:
-  - Create .env from .env.example and update RPC URLs and wallet paths.
-- Local development:
-  - Frontend dev server: yarn --cwd web dev
-  - Keeper: yarn run keeper
-  - Program tests: anchor test
 
 ## Architecture
 - System components:
