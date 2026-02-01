@@ -1,5 +1,5 @@
 {
-  "address": "2ShS3LqcJPc7MzGN95GEcyecRvKp6u932VTfkAUvZZzN",
+  "address": "5XQ8wk4T8haHVRBFF1XBnNUUifyXiv4WUTvnGC2P4oVo",
   "metadata": {
     "name": "dex",
     "version": "0.1.0",
@@ -155,6 +155,39 @@
           "writable": true
         },
         {
+          "name": "temp_wallet",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  116,
+                  101,
+                  109,
+                  112,
+                  95,
+                  119,
+                  97,
+                  108,
+                  108,
+                  101,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "temp_wallet.user",
+                "account": "TempWallet"
+              },
+              {
+                "kind": "account",
+                "path": "temp_wallet.nonce",
+                "account": "TempWallet"
+              }
+            ]
+          }
+        },
+        {
           "name": "token_in_mapping",
           "pda": {
             "seeds": [
@@ -206,6 +239,116 @@
         {
           "name": "data",
           "type": "bytes"
+        }
+      ]
+    },
+    {
+      "name": "execute_swap_test",
+      "discriminator": [
+        109,
+        134,
+        140,
+        171,
+        156,
+        92,
+        72,
+        191
+      ],
+      "accounts": [
+        {
+          "name": "payer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "settlement_request",
+          "writable": true
+        },
+        {
+          "name": "temp_wallet",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  116,
+                  101,
+                  109,
+                  112,
+                  95,
+                  119,
+                  97,
+                  108,
+                  108,
+                  101,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "temp_wallet.user",
+                "account": "TempWallet"
+              },
+              {
+                "kind": "account",
+                "path": "temp_wallet.nonce",
+                "account": "TempWallet"
+              }
+            ]
+          }
+        },
+        {
+          "name": "token_in_mapping",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  116,
+                  111,
+                  107,
+                  101,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "settlement_request.token_in",
+                "account": "SettlementRequest"
+              }
+            ]
+          }
+        },
+        {
+          "name": "token_out_mapping",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  116,
+                  111,
+                  107,
+                  101,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "settlement_request.token_out",
+                "account": "SettlementRequest"
+              }
+            ]
+          }
+        },
+        {
+          "name": "jupiter_program"
+        }
+      ],
+      "args": [
+        {
+          "name": "_nonce",
+          "type": "u64"
         }
       ]
     },

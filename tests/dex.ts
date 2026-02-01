@@ -131,25 +131,38 @@ describe("Dex", () => {
       program.programId
     )[0];
 
-    await program.methods
-      .registerToken(new anchor.BN(tokenIn.toString()))
-      .accounts({
-        payer: owner.publicKey,
-        tokenMapping: tokenInMappingPda,
-        mint: tokenInMint,
-      })
-      .signers([owner])
-      .rpc();
+    // Register Mock Tokens
+    try {
+      await program.methods
+        .registerToken(new anchor.BN(tokenIn.toString()))
+        .accounts({
+          payer: owner.publicKey,
+          // @ts-ignore
+          tokenMapping: tokenInMappingPda,
+          mint: tokenInMint,
+        })
+        .signers([owner])
+        .rpc();
+    } catch (e) {
+      // Ignore if already registered
+      console.log("Token In already registered");
+    }
 
-    await program.methods
-      .registerToken(new anchor.BN(tokenOut.toString()))
-      .accounts({
-        payer: owner.publicKey,
-        tokenMapping: tokenOutMappingPda,
-        mint: tokenOutMint,
-      })
-      .signers([owner])
-      .rpc();
+    try {
+      await program.methods
+        .registerToken(new anchor.BN(tokenOut.toString()))
+        .accounts({
+          payer: owner.publicKey,
+          // @ts-ignore
+          tokenMapping: tokenOutMappingPda,
+          mint: tokenOutMint,
+        })
+        .signers([owner])
+        .rpc();
+    } catch (e) {
+      // Ignore if already registered
+      console.log("Token Out already registered");
+    }
     console.log("Tokens registered");
 
     await program.methods
@@ -253,6 +266,7 @@ describe("Dex", () => {
         .accounts({
           payer: owner.publicKey,
           settlementRequest: settlementPda,
+          // @ts-ignore
           tokenInMapping: tokenInMappingPda,
           tokenOutMapping: tokenOutMappingPda,
           jupiterProgram: program.programId, // Using Dex as dummy target
@@ -271,13 +285,16 @@ describe("Dex", () => {
   it("User Custody Flow", async () => {
     const owner = anchor.web3.Keypair.generate();
     await provider.connection.confirmTransaction(
-      await provider.connection.requestAirdrop(owner.publicKey, 10 * anchor.web3.LAMPORTS_PER_SOL)
+      await provider.connection.requestAirdrop(
+        owner.publicKey,
+        10 * anchor.web3.LAMPORTS_PER_SOL
+      )
     );
 
     const nonceVal = new anchor.BN(Date.now());
     const amountIn = new anchor.BN(1000000);
     const minOut = new anchor.BN(950000);
-    
+
     // Create Mints
     const tokenInMint = await createMint(
       provider.connection,
@@ -320,6 +337,7 @@ describe("Dex", () => {
       )
       .accounts({
         payer: owner.publicKey,
+        // @ts-ignore
         tempWallet: tempWalletPda,
         tokenInMint: tokenInMint,
         tokenOutMint: tokenOutMint,

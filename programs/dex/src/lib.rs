@@ -5,7 +5,7 @@ use anchor_spl::associated_token::AssociatedToken;
 
 const COMP_DEF_OFFSET_MATCH_ORDER: u32 = comp_def_offset("match_order");
 
-declare_id!("2ShS3LqcJPc7MzGN95GEcyecRvKp6u932VTfkAUvZZzN");
+declare_id!("5XQ8wk4T8haHVRBFF1XBnNUUifyXiv4WUTvnGC2P4oVo");
 
 #[arcium_program]
 pub mod dex {
@@ -159,6 +159,18 @@ pub mod dex {
             signer,
         )?;
         
+        Ok(())
+    }
+
+    #[cfg(feature = "devnet")]
+    pub fn execute_swap_test(
+        ctx: Context<ExecuteSwap>,
+        _nonce: u64,
+    ) -> Result<()> {
+        msg!("TEST MODE: Skipping Jupiter CPI");
+        let settlement = &mut ctx.accounts.settlement_request;
+        require!(settlement.active, ErrorCode::SettlementNotActive);
+        settlement.active = false;
         Ok(())
     }
 

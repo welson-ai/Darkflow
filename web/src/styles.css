@@ -1,5 +1,5 @@
 :root {
-  --bg: #0b0f1a;
+  --bg: #000000;
   --card: #121826;
   --text: #e5e7eb;
   --muted: #9aa0aa;
@@ -7,12 +7,73 @@
   --accent-2: #16a34a;
   --border: #233047;
 }
+body {
+  background: var(--bg);
+}
 .container {
   max-width: 720px;
   margin: 32px auto;
   padding: 0 16px;
   color: var(--text);
   font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
+}
+.site-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px;
+  background: #0e1422;
+  border-bottom: 1px solid var(--border);
+}
+.site-brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 700;
+}
+.brand-image {
+  height: 78px;
+  width: auto;
+  display: block;
+}
+.site-brand-name {
+  font-size: 20px;
+  font-weight: 800;
+  background: linear-gradient(90deg, #cfd4db 0%, #8aa9ff 40%, #1dd6da 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.hero {
+  max-width: 860px;
+  margin: 24px auto 0;
+  padding: 0 16px;
+  text-align: center;
+  color: #ffffff;
+}
+.hero h1 {
+  font-size: 28px;
+  font-weight: 800;
+  margin: 8px 0;
+}
+.hero p {
+  font-size: 16px;
+  margin: 0;
+}
+.site-footer {
+  margin-top: 24px;
+  padding: 16px;
+  text-align: center;
+  color: var(--muted);
+  border-top: 1px solid var(--border);
+}
+.wallet-adapter-button,
+.wallet-adapter-button-trigger {
+  border-radius: 9999px !important;
+  padding: 10px 16px !important;
+  background: var(--accent) !important;
+  color: #fff !important;
+  border: 1px solid var(--accent) !important;
 }
 .header {
   display: flex;

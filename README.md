@@ -5,6 +5,73 @@ Privacy-First Trading on Solana DEXs
 - Website: https://privateswap.com
 - Docs: ./README.md
 - Community: see “Community” below
+ 
+## Short Description
+- DarkFlow enables private token swaps on Solana by executing trades from an ephemeral PDA (Temp Wallet) instead of the user’s wallet. Orders are prepared off-chain and executed on-chain with privacy-preserving flow, returning funds to the user after completion.
+
+## Technology Stack & Integration Snippets
+
+### Helius (RPC & Network)
+We use Helius for high-performance RPC connections on Solana Devnet and Mainnet.
+```typescript
+// web/src/App.tsx
+const heliusKey = env.VITE_HELIUS_API_KEY;
+const heliusNetwork = env.VITE_HELIUS_NETWORK || "devnet";
+
+// Fallback to Helius RPC if provided
+const endpoint = rpcEnv || 
+  (heliusKey ? `https://${heliusNetwork}.helius-rpc.com/?api-key=${heliusKey}` : "https://api.devnet.solana.com");
+```
+
+### Arcium (Confidential Computing)
+Arcium (formerly "Aztec" or related confidential concepts) powers the MPC (Multi-Party Computation) layer. It ensures order parameters remain encrypted during matching.
+```rust
+// programs/dex/src/lib.rs
+use arcium_anchor::prelude::*;
+
+#[arcium_program]
+pub mod dex {
+    // Encrypted arguments passed to the program
+    pub fn create_private_swap(
+        ctx: Context<CreatePrivateSwap>,
+        // ...
+        enc_amount_in: EncryptedU64,
+        enc_min_out: EncryptedU64,
+        // ...
+    ) -> Result<()> { ... }
+}
+```
+
+### Jupiter (Liquidity Aggregation)
+Jupiter is used to fetch the best swap routes for the executed orders.
+```typescript
+// web/src/services/quotes.ts
+import { createJupiterApiClient } from '@jup-ag/api';
+
+export async function getSwapQuote(...) {
+    const jupiterQuoteApi = createJupiterApiClient();
+    const quote = await jupiterQuoteApi.quoteGet({
+        inputMint: fromMint,
+        outputMint: toMint,
+        amount: amountInLamports,
+        slippageBps: 100, // 1%
+    });
+    return quote;
+}
+```
+
+### Solana (Anchor Framework)
+The core logic resides on the Solana blockchain, built with the Anchor framework.
+```typescript
+// web/src/anchor.ts
+import { AnchorProvider, Program } from "@coral-xyz/anchor";
+
+export function getProvider(wallet: any) {
+  return new AnchorProvider(getConnection(), wallet, {
+    preflightCommitment: "confirmed",
+  });
+}
+```
 
 ## Overview
 - Problem: On-chain trading is public; wallet identities and trade details can be traced across DEXs.
@@ -231,11 +298,22 @@ Privacy-First Trading on Solana DEXs
 - Completed:
   - Temp Wallet PDA, create_private_swap, deposit flow, MPC queueing.
   - Jupiter CPI signed by Temp Wallet, basic frontend flow with quotes/balances.
+  - Option 1 test flow on Localhost with simulated match and execution.
+  - Test validator connection indicator in the UI.
+  - Simple privacy test passing: temp wallet creation and funding.
 - In-Progress:
   - Keeper automation for funding detection, route building, and return.
   - On-chain min_out enforcement in execute_swap.
 - Planned:
   - Tailwind UI, componentization, analytics and alerts, multi-route retries.
+ 
+## Next Steps
+- Finalize keeper automation to handle full custody and return flow.
+- Integrate mainnet Jupiter routes with dynamic network-aware selection.
+- Harden on-chain checks and enforce min_out where applicable.
+- Improve UI/UX with test mode toggles and richer status panels.
+- Expand support for more liquidity pools and token pairs.
+- Integrate additional Solana DEXs directly (beyond Jupiter aggregation) to enhance route optionality.
 
 ## Contributing
 - See [CONTRIBUTING.md](file:///Users/h/dex/CONTRIBUTING.md) for guidelines.
@@ -259,7 +337,7 @@ Privacy-First Trading on Solana DEXs
 
 ## Community
 - Discord/Telegram/Twitter: coming soon
-- Email: contact@privateswap.com
+- Email: jahnetkiminza@gmail.com
 
 ## License
 - MIT

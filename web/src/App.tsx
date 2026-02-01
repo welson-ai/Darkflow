@@ -2,58 +2,89 @@ import { useMemo, useState, useEffect } from "react";
 import { ConnectionProvider, WalletProvider } from "@solana/wallet-adapter-react";
 import { WalletModalProvider, WalletMultiButton } from "@solana/wallet-adapter-react-ui";
 import { PhantomWalletAdapter } from "@solana/wallet-adapter-wallets";
-import { useAnchorWallet } from "@solana/wallet-adapter-react";
+import { SolflareWalletAdapter } from "@solana/wallet-adapter-wallets";
+import { WalletAdapterNetwork } from "@solana/wallet-adapter-base";
+import { useAnchorWallet, useWallet } from "@solana/wallet-adapter-react";
 import { AnchorProvider, BN } from "@coral-xyz/anchor";
-import { PublicKey } from "@solana/web3.js";
+import { PublicKey, Transaction, TransactionInstruction } from "@solana/web3.js";
 import { getProvider, getProgram, PROGRAM_ID, findSettlementPda, findTokenMapPda, findTempWalletPda } from "./anchor";
+import { getNetwork } from "./utils/network";
+import { getSwapQuote } from "./services/quotes";
 import "./styles.css";
 
 function Inner() {
   const wallet = useAnchorWallet();
+  const { connected } = useWallet();
   const [step, setStep] = useState<"input" | "deposit" | "processing" | "complete">("input");
-  const [fromToken, setFromToken] = useState<keyof typeof TOKEN_REGISTRY>("USDC");
-  const [toToken, setToToken] = useState<keyof typeof TOKEN_REGISTRY>("SOL");
-  const [amount, setAmount] = useState<string>("1000");
-  const [estimatedOutput, setEstimatedOutput] = useState<string>("0.00");
+  const [fromToken, setFromToken] = useState<string>("");
+  const [toToken, setToToken] = useState<string>("");
+  const [amount, setAmount] = useState<string>("");
+  const [estimatedOutput, setEstimatedOutput] = useState<string>("");
+  const [isMock, setIsMock] = useState<boolean>(false);
   const [loading, setLoading] = useState(false);
   const [tempWalletAddr, setTempWalletAddr] = useState<string>("");
   const [nonce, setNonce] = useState<string>(() => Date.now().toString());
   const [status, setStatus] = useState<string>("");
-  const [balance, setBalance] = useState<string>("0.00");
+  const [balance, setBalance] = useState<string>("");
   const [error, setError] = useState<string>("");
   const [swapResult, setSwapResult] = useState<any | null>(null);
   const [startToBalance, setStartToBalance] = useState<number | null>(null);
+  const [validatorOK, setValidatorOK] = useState<boolean>(false);
+  const [networkLabel, setNetworkLabel] = useState<string>("");
 
-  const provider = useMemo<AnchorProvider | null>(() => (wallet ? getProvider(wallet) : null), [wallet]);
-  const program = useMemo(() => (provider ? getProgram(provider) : null), [provider]);
+  const provider = useMemo<AnchorProvider | null>(() => {
+    if (wallet) {
+      console.log("App: Wallet present, getting provider");
+      return getProvider(wallet);
+    }
+    console.log("App: Wallet null");
+    return null;
+  }, [wallet]);
+
+  const program = useMemo(() => {
+    if (provider) {
+      console.log("App: Provider present, getting program");
+      return getProgram(provider);
+    }
+    console.log("App: Provider null");
+    return null;
+  }, [provider]);
+
+  const DEFAULT_DEVNET_POOL_ID = "58oQChx4yWmvKdwLLZzBi4ChoCc2fqCUWBkwMihLYQo2";
+  // USE_MOCK_SWAP removed in favor of dynamic network detection
+  const MOCK_PRICE_USDC_PER_SOL = 40;
 
   useEffect(() => {
     const handler = setTimeout(async () => {
-      if (!amount || parseFloat(amount) <= 0) {
-        setEstimatedOutput("0.00");
+      if (!amount || parseFloat(amount) <= 0 || !fromToken || !toToken) {
+        setEstimatedOutput("");
         return;
       }
       try {
-        const { createJupiterApiClient } = await import("@jup-ag/api");
-        const jupiterQuoteApi = createJupiterApiClient();
+        if (!program) return;
+        const connection = program.provider.connection;
         const fromInfo = TOKEN_REGISTRY[fromToken];
         const toInfo = TOKEN_REGISTRY[toToken];
-        const amtSmall = Math.floor(parseFloat(amount) * Math.pow(10, fromInfo.decimals));
-        const quote = await jupiterQuoteApi.quoteGet({
-          inputMint: fromInfo.mint.toString(),
-          outputMint: toInfo.mint.toString(),
-          amount: amtSmall,
-          slippageBps: 100,
-        });
-        const outputAmount = parseInt(quote.outAmount) / Math.pow(10, toInfo.decimals);
-        setEstimatedOutput(outputAmount.toFixed(toInfo.decimals === 9 ? 4 : 2));
+        
+        const quote = await getSwapQuote(
+            fromInfo.mint.toString(),
+            toInfo.mint.toString(),
+            parseFloat(amount),
+            fromInfo.decimals,
+            toInfo.decimals,
+            connection
+        );
+        
+        setEstimatedOutput(quote.outAmount.toFixed(toInfo.decimals === 9 ? 4 : 2));
+        setIsMock(quote.isMock);
       } catch (e) {
         console.error("Quote error:", e);
-        setEstimatedOutput("Error");
+        setEstimatedOutput("");
+        setIsMock(false);
       }
     }, 500);
     return () => clearTimeout(handler);
-  }, [amount, fromToken, toToken]);
+  }, [amount, fromToken, toToken, program]);
 
   useEffect(() => {
     if (!program || !wallet?.publicKey) return;
@@ -63,12 +94,21 @@ function Inner() {
           const id = new BN(info.tokenId);
           const pda = findTokenMapPda(program.programId, id);
           try {
-            await program.methods
-              .registerToken(id)
-              .accounts({ payer: wallet.publicKey, tokenMapping: pda, mint: info.mint })
-              .rpc();
-          } catch {
-            // ignore if already registered
+            // Check if already registered
+            await program.account.tokenMapping.fetch(pda);
+            console.log(`Token ${symbol} already registered`);
+          } catch (e) {
+            // Not registered, try to register
+            console.log(`Registering token ${symbol}...`);
+            try {
+              await program.methods
+                .registerToken(id)
+                .accounts({ payer: wallet.publicKey, tokenMapping: pda, mint: info.mint })
+                .rpc();
+              console.log(`Registered ${symbol}`);
+            } catch (regError) {
+              console.warn(`Failed to register ${symbol}:`, regError);
+            }
           }
         }
       } catch (e) {
@@ -103,6 +143,21 @@ function Inner() {
     }
   };
 
+  const requestAirdrop = async () => {
+    if (!program || !wallet?.publicKey) return;
+    try {
+      setError("");
+      setStatus("Requesting Devnet airdrop...");
+      const sig = await program.provider.connection.requestAirdrop(wallet.publicKey, 2 * 1e9);
+      await program.provider.connection.confirmTransaction(sig, "confirmed");
+      await fetchBalance("SOL");
+      setStatus("Airdrop complete");
+    } catch (e: any) {
+      console.error(e);
+      setError(`Airdrop failed: ${e?.message || e}`);
+    }
+  };
+
   const fetchBalanceNumeric = async (tokenSymbol: string): Promise<number> => {
     if (!program || !wallet?.publicKey) return 0;
     try {
@@ -128,17 +183,54 @@ function Inner() {
   };
 
   useEffect(() => {
-    if (wallet && (wallet as any).connected && fromToken) {
+    if (wallet && connected && fromToken) {
       fetchBalance(fromToken);
     }
-  }, [wallet, fromToken]);
+  }, [wallet, connected, fromToken]);
+  
+  useEffect(() => {
+    if (!program) return;
+    const conn = program.provider.connection;
+    const net = getNetwork(conn);
+    setNetworkLabel(net);
+    (async () => {
+      try {
+        if (net !== "mainnet") {
+          await conn.getLatestBlockhash();
+          setValidatorOK(true);
+        } else {
+          setValidatorOK(false);
+        }
+      } catch {
+        setValidatorOK(false);
+      }
+    })();
+  }, [program]);
 
   async function handleSwapPrivately() {
-    if (!program || !wallet?.publicKey) return;
-    if (!(wallet as any).connected) {
+    console.log("handleSwapPrivately initiated");
+    if (!connected) {
       setError("Please connect your wallet first");
       return;
     }
+    if (!wallet?.publicKey) {
+      setError("Wallet not ready. Please try disconnecting and reconnecting.");
+      return;
+    }
+    if (!program) {
+      setError("System not ready. Please reload the page.");
+      return;
+    }
+    if (!fromToken) {
+      setError("Select the token you pay");
+      return;
+    }
+    if (!toToken) {
+      setError("Select the token you receive");
+      return;
+    }
+    // proceed with Raydium CPMM swap on devnet
+
     const n = new BN(nonce);
     const fromInfo = TOKEN_REGISTRY[fromToken];
     const toInfo = TOKEN_REGISTRY[toToken];
@@ -151,55 +243,123 @@ function Inner() {
       setError("Cannot swap the same token");
       return;
     }
-    if (balance !== "Error" && parseFloat(balance) < parsed) {
+    const numericBalance = parseFloat(balance);
+    if (balance !== "Error" && Number.isFinite(numericBalance) && numericBalance < parsed) {
       setError(`Insufficient ${fromToken} balance. You have ${balance} ${fromToken}`);
       return;
     }
     const amtInSmall = Math.floor(parsed * Math.pow(10, fromInfo.decimals));
     const amtIn = new BN(amtInSmall);
-    const mOut = new BN(0);
-    const tempWallet = findTempWalletPda(program.programId, wallet.publicKey, n);
-    
-    const dummyEnc = new Array(32).fill(0);
-    
+
     try {
       setError("");
       setLoading(true);
-      const startBal = await fetchBalanceNumeric(toToken);
-      setStartToBalance(startBal);
-      await program.methods
+
+      const connection = program.provider.connection;
+      const network = getNetwork(connection);
+      
+      // Calculate minOut (using quote or estimate)
+      // Since we just need to initiate, we can use the current estimated output
+      // For real flow, we should probably re-quote here.
+      const estOut = parseFloat(estimatedOutput || "0");
+      const minOutSmall = Math.floor(estOut * Math.pow(10, toInfo.decimals) * 0.99); // 1% slippage
+      const minOut = new BN(minOutSmall);
+
+      // 1. Create Private Swap (Temp Wallet)
+      const dummyEncrypted = Array(32).fill(0);
+      const computationOffset = new BN(0);
+
+      const tempWalletPda = findTempWalletPda(program.programId, wallet.publicKey, n);
+      setTempWalletAddr(tempWalletPda.toString());
+
+      const tx = new Transaction();
+      
+      // We need token mints
+      const tokenInMint = new PublicKey(fromInfo.mint);
+      const tokenOutMint = new PublicKey(toInfo.mint);
+
+      const createIx = await program.methods
         .createPrivateSwap(
-          amtIn,
-          mOut,
-          n,
-          new BN(0), // computation_offset
-          dummyEnc,
-          dummyEnc,
-          dummyEnc,
-          dummyEnc,
-          dummyEnc
+            amtIn,
+            minOut,
+            n,
+            computationOffset,
+            dummyEncrypted, // amount_in
+            dummyEncrypted, // amount_out_min
+            dummyEncrypted, // token_in
+            dummyEncrypted, // token_out
+            dummyEncrypted  // nonce
         )
         .accounts({
-          payer: wallet.publicKey,
-          tempWallet: tempWallet,
-          tokenInMint: fromInfo.mint,
-          tokenOutMint: toInfo.mint,
+            payer: wallet.publicKey,
+            tempWallet: tempWalletPda,
+            tokenInMint: tokenInMint,
+            tokenOutMint: tokenOutMint,
         })
-        .rpc()
-        .then((txid: string) => {
-          setSwapResult((prev: any) => ({ ...(prev || {}), txSignature: txid }));
-        });
-      setTempWalletAddr(tempWallet.toBase58());
+        .instruction();
+      
+      tx.add(createIx);
+
+      if (network !== 'mainnet') {
+        // Devnet/Localhost: Simulate Match Order (Test Flow)
+        // We can do this in the same transaction for testing convenience, 
+        // OR separate it. Separate is better to mimic async nature.
+        // But for user experience, let's just do create first.
+      }
+
+      const sig = await (program.provider as any).sendAndConfirm(tx, []);
+      console.log("Private Swap Created:", sig);
+
       setStep("deposit");
-      setStatus("");
+      setStatus("Swap initiated. Waiting for deposit...");
+
+      // Simulate Match Order (Test Flow) - Moved to run after deposit detection or immediately if needed
+      // But for "Option 1" style, let's keep it here but clearly mark it as part of the test flow setup
+      if (network !== 'mainnet') {
+         console.log("Simulating Match Order for Test Network...");
+         const tokenInId = new BN(fromInfo.tokenId);
+         const tokenOutId = new BN(toInfo.tokenId);
+         
+         const simTx = new Transaction();
+         const simIx = await program.methods
+            .simulateMatchOrder(
+                amtIn,
+                minOut,
+                tokenInId,
+                tokenOutId,
+                n
+            )
+            .accounts({
+                payer: wallet.publicKey,
+                settlementRequest: findSettlementPda(program.programId, n)
+            })
+            .instruction();
+         
+         simTx.add(simIx);
+         await (program.provider as any).sendAndConfirm(simTx, []);
+         console.log("✅ Settlement active (Simulated)");
+      }
+
     } catch (e: any) {
       console.error(e);
+      let logs: string[] | null = null;
+      try {
+        if (typeof e?.getLogs === "function") {
+          const l = await e.getLogs();
+          if (Array.isArray(l)) logs = l;
+        } else if (Array.isArray(e?.logs)) {
+          logs = e.logs;
+        }
+      } catch {}
       if (e?.message?.includes("User rejected")) {
         setError("Transaction cancelled");
       } else if (e?.message?.includes("insufficient funds")) {
         setError("Insufficient SOL for transaction fees");
       } else {
         setError(`Swap failed: ${e?.message || e}`);
+        if (logs && logs.length) {
+          setStatus(logs.join("\n"));
+        }
       }
     } finally {
       setLoading(false);
@@ -218,7 +378,54 @@ function Inner() {
           setStep("processing");
         }
         const info = await program.provider.connection.getAccountInfo(settlementPda);
-        if (!info && step === "processing") {
+        let isSettled = false;
+        if (!info) {
+             // Account closed (Mainnet behavior)
+             isSettled = true;
+        } else {
+             // Check if active (Devnet behavior)
+             try {
+                const acc = await program.account.settlementRequest.fetch(settlementPda);
+                
+                // If we are on Localhost/Devnet, we need to manually trigger execution when funded
+                const network = getNetwork(program.provider.connection);
+                if (network !== 'mainnet' && tempWallet.isFunded && acc.active && step === "processing") {
+                    console.log("Auto-executing swap for test network...");
+                    // We need token IDs and empty route data
+                    const fromInfo = TOKEN_REGISTRY[fromToken];
+                    const toInfo = TOKEN_REGISTRY[toToken];
+                    // Find mapping PDAs
+                    const tokenInMappingPda = findTokenMapPda(program.programId, new BN(fromInfo.tokenId));
+                    const tokenOutMappingPda = findTokenMapPda(program.programId, new BN(toInfo.tokenId));
+                    
+                    try {
+                        await program.methods
+                            .executeSwapTest(n)
+                            .accounts({
+                                payer: wallet.publicKey,
+                                settlementRequest: settlementPda,
+                                tempWallet: new PublicKey(tempWalletAddr),
+                                tokenInMapping: tokenInMappingPda,
+                                tokenOutMapping: tokenOutMappingPda,
+                                jupiterProgram: new PublicKey("11111111111111111111111111111111"), // Dummy
+                            })
+                            .rpc();
+                         console.log("Execute Swap Test sent");
+                    } catch (exErr) {
+                        console.error("Execute Swap Test failed", exErr);
+                    }
+                }
+
+                if (!acc.active) {
+                    isSettled = true;
+                }
+             } catch (e) {
+                 // Might be closed now
+                 isSettled = true;
+             }
+        }
+
+        if (isSettled && step === "processing") {
           const finalBal = await fetchBalanceNumeric(toToken);
           const amountOut = startToBalance !== null ? Math.max(finalBal - startToBalance, 0) : 0;
           const privacyFee = (parseFloat(amount) || 0) * 0.003;
@@ -245,13 +452,102 @@ function Inner() {
   }, [program, wallet?.publicKey, tempWalletAddr, step, nonce]);
 
   return (
-    <div className="container">
-      <div className="header">
-        <WalletMultiButton />
+    <div>
+      <div className="site-header">
+        <div className="site-brand">
+          <img
+            className="brand-image"
+            src="https://i.postimg.cc/tgbDCVXC/Untitled-design-1-removebg-preview.png"
+            alt="logo"
+          />
+        </div>
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <WalletMultiButton />
+        </div>
       </div>
+      <div className="hero">
+        <h1>Privacy-first swapping</h1>
+        <p>Darkflow lets you swap tokens without exposing your trading intent.</p>
+      </div>
+      {/* Network Status Indicator */}
+      <div style={{
+          position: 'fixed',
+          top: 20,
+          right: 20,
+          background: 'rgba(0,0,0,0.8)',
+          padding: '8px 16px',
+          borderRadius: 20,
+          border: '1px solid #333',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+          fontSize: 12,
+          zIndex: 100
+      }}>
+          <div style={{
+              width: 8,
+              height: 8,
+              borderRadius: '50%',
+              background: validatorOK ? '#00ff88' : '#ff4444',
+              boxShadow: validatorOK ? '0 0 10px #00ff88' : 'none'
+          }} />
+          <span style={{ color: '#aaa' }}>
+              {validatorOK ? 'Test Validator: Connected' : 'Test Validator: Not Connected'}
+          </span>
+          {networkLabel && networkLabel !== 'mainnet' && (
+             <span style={{ 
+                 background: '#333', 
+                 padding: '2px 6px', 
+                 borderRadius: 4, 
+                 color: '#fff',
+                 fontWeight: 'bold'
+             }}>
+                 TEST MODE ({networkLabel})
+             </span>
+          )}
+      </div>
+      
+      {networkLabel && networkLabel !== 'mainnet' && (
+        <div style={{
+          position: 'fixed',
+          bottom: 20,
+          right: 20,
+          background: 'rgba(20,20,20,0.95)',
+          padding: '16px',
+          borderRadius: 12,
+          border: '1px solid #333',
+          width: 280,
+          zIndex: 99
+        }}>
+          <div style={{ fontWeight: 700, marginBottom: 8, color: '#fff' }}>Test Validator Status</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <div style={{
+              width: 10, height: 10, borderRadius: '50%',
+              background: validatorOK ? '#00ff88' : '#ff4444',
+              boxShadow: validatorOK ? '0 0 10px #00ff88' : 'none'
+            }} />
+            <div style={{ color: '#ccc' }}>{validatorOK ? 'Connected' : 'Not connected'}</div>
+          </div>
+          <div style={{ marginTop: 8, color: '#aaa', fontSize: 12 }}>
+            Network: {networkLabel}
+          </div>
+        </div>
+      )}
+
+      <div className="container">
       {step === "input" && (
         <div className="swap-card">
-          <div className="title">🔒 Private Swap</div>
+          <div className="title">
+            🔒 Private Swap
+            {isMock && <span style={{ 
+                marginLeft: '10px', 
+                fontSize: '0.6em', 
+                background: '#ff9800', 
+                color: 'black', 
+                padding: '2px 6px', 
+                borderRadius: '4px' 
+            }}>MOCK</span>}
+          </div>
           <div className="input-section">
             <label>You Pay</label>
             <div className="token-input">
@@ -260,8 +556,12 @@ function Inner() {
                 value={amount}
                 onChange={(e) => setAmount(e.target.value)}
                 placeholder="0.00"
+                required
               />
-              <select value={fromToken} onChange={(e) => setFromToken(e.target.value as any)}>
+              <select value={fromToken} onChange={(e) => setFromToken(e.target.value)}>
+                <option value="" disabled>
+                  Select token
+                </option>
                 {Object.keys(TOKEN_REGISTRY).map((symbol) => (
                   <option key={symbol} value={symbol}>
                     {TOKEN_REGISTRY[symbol as keyof typeof TOKEN_REGISTRY].icon} {symbol}
@@ -269,11 +569,17 @@ function Inner() {
                 ))}
               </select>
             </div>
+            {connected && fromToken && balance && (
+              <div className="balance-display">
+                <span>Balance: {balance} {fromToken}</span>
+              </div>
+            )}
           </div>
           <div className="swap-arrow-container">
             <button
               className="swap-direction-button"
               onClick={() => {
+                if (!fromToken || !toToken) return;
                 const temp = fromToken;
                 setFromToken(toToken);
                 setToToken(temp);
@@ -286,8 +592,11 @@ function Inner() {
           <div className="input-section">
             <label>You Receive (estimated)</label>
             <div className="token-input">
-              <input type="text" value={estimatedOutput} disabled placeholder="0.00" />
-              <select value={toToken} onChange={(e) => setToToken(e.target.value as any)}>
+              <input type="text" value={estimatedOutput} disabled placeholder="—" />
+              <select value={toToken} onChange={(e) => setToToken(e.target.value)}>
+                <option value="" disabled>
+                  Select token
+                </option>
                 {Object.keys(TOKEN_REGISTRY).map((symbol) => (
                   <option key={symbol} value={symbol}>
                     {TOKEN_REGISTRY[symbol as keyof typeof TOKEN_REGISTRY].icon} {symbol}
@@ -300,7 +609,11 @@ function Inner() {
             <span>Privacy Fee: 0.3%</span>
             <span>Slippage: 1%</span>
           </div>
-          <button className="swap-button" onClick={handleSwapPrivately} disabled={loading || !(wallet as any)?.connected}>
+          <button
+            className="swap-button"
+            onClick={handleSwapPrivately}
+            disabled={loading || !connected || !amount || !fromToken || !toToken}
+          >
             {loading ? (
               <>
                 <span className="spinner">⏳</span> Creating Swap...
@@ -381,14 +694,35 @@ function Inner() {
           )}
         </div>
       )}
+      </div>
+      <div className="site-footer">
+        © {new Date().getFullYear()} Private DEX — Privacy-preserving swaps on Solana
+      </div>
     </div>
   );
 }
 
 export default function App() {
-  const wallets = useMemo(() => [new PhantomWalletAdapter()], []);
+  const env: any = (import.meta as any).env || {};
+  const rpcEnv = env.VITE_RPC_URL;
+  const heliusKey = env.VITE_HELIUS_API_KEY;
+  const heliusNetwork = env.VITE_HELIUS_NETWORK || "devnet";
+  
+  // Force Localhost for testing as per recent success
+  // const endpoint =
+  //   rpcEnv ||
+  //   (heliusKey ? `https://${heliusNetwork}.helius-rpc.com/?api-key=${heliusKey}` : "https://api.devnet.solana.com");
+  const endpoint = "http://127.0.0.1:8899";
+  
+  const wallets = useMemo(
+    () => [
+      new PhantomWalletAdapter({ network: WalletAdapterNetwork.Devnet }),
+      new SolflareWalletAdapter({ network: WalletAdapterNetwork.Devnet }),
+    ],
+    []
+  );
   return (
-    <ConnectionProvider endpoint="https://api.devnet.solana.com">
+    <ConnectionProvider endpoint={endpoint}>
       <WalletProvider wallets={wallets} autoConnect>
         <WalletModalProvider>
           <Inner />
@@ -404,7 +738,7 @@ const TOKEN_REGISTRY: Record<
 > = {
   USDC: {
     tokenId: 1,
-    mint: new PublicKey("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"),
+    mint: new PublicKey("4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU"),
     decimals: 6,
     icon: "💵",
   },
@@ -416,14 +750,8 @@ const TOKEN_REGISTRY: Record<
   },
   USDT: {
     tokenId: 3,
-    mint: new PublicKey("Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB"),
+    mint: new PublicKey("EJwZgeZrdC8TXTQbQBoL6bfuAnFUUy1PVCMB4DYPzVaS"),
     decimals: 6,
     icon: "💲",
-  },
-  BONK: {
-    tokenId: 4,
-    mint: new PublicKey("DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263"),
-    decimals: 5,
-    icon: "🐕",
   },
 };

@@ -9,7 +9,8 @@ crate-type = ["cdylib", "lib"]
 name = "dex"
 
 [features]
-default = []
+default = ["devnet"]
+devnet = []
 cpi = ["no-entrypoint"]
 no-entrypoint = []
 no-idl = []
