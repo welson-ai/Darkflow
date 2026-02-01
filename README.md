@@ -7,7 +7,7 @@ Privacy-First Trading on Solana DEXs
 - Community: see “Community” below
  
 ## Short Description
-- DarkFlow enables private token swaps on Solana by executing trades from an ephemeral PDA (Temp Wallet) instead of the user’s wallet. Orders are prepared off-chain and executed on-chain with privacy-preserving flow, returning funds to the user after completion.
+- DarkFlow enables private token swaps on Solana powere DEXs (decentralized exchanges) by executing trades from an ephemeral PDA (Temp Wallet) instead of the user’s wallet. Orders are prepared off-chain and executed on-chain with privacy-preserving flow, returning funds to the user after completion.
 
 ## Technology Stack & Integration Snippets
 
